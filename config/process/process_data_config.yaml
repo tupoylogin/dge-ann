@@ -1,0 +1,11 @@
+user_column: visitorid
+item_column: itemid
+timestamp_column: timestamp
+transaction_type_column: event
+num_walks: 3
+num_steps: 10
+p: 1.
+q: 1.
+window_size: 10
+num_negative_samples: 2
+train_test_ratio: 0.6

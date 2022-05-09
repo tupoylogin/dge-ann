@@ -1,0 +1,6 @@
+STRING = "str"
+INTEGER = "int"
+RELATIVE = "relative"
+ABSOLUTE = "absolute"
+PLAIN = "plain"
+NEIGHBOR = "neighbor"

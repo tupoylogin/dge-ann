@@ -1,0 +1,12 @@
+defaults:
+  - process: process_data_config
+  - _self_
+
+logging: 
+  path: logging/
+  
+raw: 
+  path: data/raw/events.csv
+
+processed:
+  path: data/processed/
