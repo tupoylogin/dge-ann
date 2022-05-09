@@ -40,19 +40,15 @@ class Node2Vec(tf.keras.models.Model):
             embedding_dim, 
             embeddings_initializer='he_normal',
             embeddings_regularizer= tf.keras.regularizers.l2(1e-6),
-            name="embedding_type",
+            name="embeddings",
             )
         self.dot = tf.keras.layers.Dot(axes=1, normalize=False)
     
     def call(self, inputs: tp.Dict[str, tf.Tensor]) -> tf.Tensor:
         target_lookup = self.lookup_layer(inputs[self._target_feature])
         context_lookup = self.lookup_layer(inputs[self._context_feature])
-        print(target_lookup)
-        print(context_lookup)
         target_embeddings = self.embedding_layer_layer(target_lookup)
         context_embeddings = self.embedding_layer_layer(context_lookup)
-        print(target_embeddings)
-        print(context_embeddings)
         logits = self.dot([target_embeddings, context_embeddings])
         return logits
 
