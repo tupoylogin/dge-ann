@@ -161,8 +161,8 @@ class AttentionDCN(tf.keras.models.Model):
         else:
             if "known_items_relations" not in embedding_kwargs:
                 raise TypeError("`known_items_relations` parameter must be specified if using neigbor embeddings")
-            known_feature_relations = embedding_kwargs.pop("known_items_relations")
-            self.embedding_layer = NeighborEmbedding(input_dim=feature_size, output_dim=embedding_dim, mask_zero=True, known_feature_relations=known_feature_relations, **embedding_kwargs)
+            known_items_relations = embedding_kwargs.pop("known_items_relations")
+            self.embedding_layer = NeighborEmbedding(input_dim=feature_size, output_dim=embedding_dim, mask_zero=True, known_items_relations=known_items_relations, **embedding_kwargs)
 
         self.cross_layer = None
         if use_cross_layer:
