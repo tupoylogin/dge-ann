@@ -210,15 +210,11 @@ class RetrievalModel(tfrs.Model):
     def __init__(self,
                 query_model: tf.keras.models.Model,
                 candidate_model: tf.keras.models.Model,
-                candidate_pool: tf.data.Dataset,
-                query_features: tp.List[str],
-                candidate_feature: str,
+                candidate_pool: tf.data.Dataset
                 ) -> None:
         super().__init__()
         self.query_model = query_model
         self.candidate_model = candidate_model
-        self._query_features = query_features
-        self._candidate_feature = candidate_feature
 
         self.task = tfrs.tasks.Retrieval(
             metrics=tfrs.metrics.FactorizedTopK(
@@ -240,10 +236,8 @@ class RetrievalModel(tfrs.Model):
         # is to ensure that the training inputs would have the same keys as the
         # query inputs. Otherwise the discrepancy in input structure would cause an
         # error when loading the query model after saving it.
-        query_embeddings = self.query_model({feat: features[feat]
-            for feat in self._query_features
-        })
-        embedding_type = self.candidate_model(features[self._candidate_feature])
+        query_embeddings = self.query_model(features)
+        embedding_type = self.candidate_model(features)
 
         return self.task(
             query_embeddings, embedding_type, compute_metrics=not training)
