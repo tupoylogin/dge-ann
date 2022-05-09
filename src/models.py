@@ -126,7 +126,6 @@ class AttentionDCN(tf.keras.models.Model):
     def __init__(self, feature_name: str, feature_type: str, feature_vocab: np.ndarray, embedding_dim: int, deep_model_layer_sizes: int, use_cross_layer: bool, *, position_embeddings: str = None, embedding_type: str = 'plain', projection_dim: int = 32, **embedding_kwargs): 
         check_feature_type(feature_type)
         check_embedding_type(embedding_type)
-        check_position_embedding_type(position_embeddings)
 
         super().__init__()
         self.feature_name = feature_name
@@ -150,10 +149,12 @@ class AttentionDCN(tf.keras.models.Model):
         self.average_pooling = tf.keras.layers.GlobalAveragePooling1D()
 
         self.position_embedding = None
-        if position_embeddings == RELATIVE:
-            self.position_embedding = RelativePositionEmbedding(output_dim=embedding_dim)
-        else:
-            self.position_embedding = PositionEmbedding(input_dim=feature_size, output_dim=embedding_dim)
+        if position_embeddings:
+            check_position_embedding_type(position_embeddings)
+            if position_embeddings == RELATIVE:
+                self.position_embedding = RelativePositionEmbedding(output_dim=embedding_dim)
+            else:
+                self.position_embedding = PositionEmbedding(input_dim=feature_size, output_dim=embedding_dim)
 
         if embedding_type == PLAIN:
             self.embedding_layer = tf.keras.layers.Embedding(input_dim=feature_size, output_dim=embedding_dim, mask_zero=True)
