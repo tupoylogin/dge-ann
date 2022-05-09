@@ -179,7 +179,7 @@ class AttentionDCN(tf.keras.models.Model):
         item_value = self.value_layer_feature(item_embedding)
 
         if self.position_embedding is not None:
-            position_embedding = self.position_embedding(input[self.feature_names])
+            position_embedding = self.position_embedding(input[self.feature_name])
             position_query = self.query_layer_position(position_embedding)
             position_key = self.key_layer_position(position_embedding)
             position_value = self.value_layer_position(position_embedding)
