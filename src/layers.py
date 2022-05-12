@@ -49,6 +49,7 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
         out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
         out = tf.multiply(out, 1 - self.decay_rate)
         out_neighbors = []
+        print(inputs)
         for sequence in inputs:
             out = self._A.indices
             sequence_neighbors = []
