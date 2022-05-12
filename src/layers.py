@@ -42,7 +42,7 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
         --------
             A tensor in shape of `(length, output_dim)`.
         """
-        neighbors_indices = defaultdict(tf.int32)
+        neighbors_indices = defaultdict()
         dtype = backend.dtype(inputs)
         if dtype != 'int32' and dtype != 'int64':
             inputs = math_ops.cast(inputs, 'int32')
