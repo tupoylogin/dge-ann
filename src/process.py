@@ -223,21 +223,21 @@ def process_data(config: DictConfig):
     
 
     events_for_train_ds = tf.data.Dataset.from_tensor_slices(
-        {
+        ({
             user_column: events_for_train[user_column],
             transaction_type_column: events_for_train[transaction_type_column],
             item_column: events_for_train[item_column]
-        }
+        },)
     )
     tf.data.experimental.save(events_for_train_ds, savefile_path + "train")
     logging.info(f"Train dataset of KG saved to {savefile_path + 'train'}")
 
     events_for_test_ds = tf.data.Dataset.from_tensor_slices(
-        {
+        ({
             user_column: events_for_test[user_column],
             transaction_type_column: events_for_test[transaction_type_column],
             item_column: events_for_test[item_column]
-        }
+        },)
     )
     tf.data.experimental.save(events_for_test_ds, savefile_path + "test")
     logging.info(f"Test dataset of KG saved to {savefile_path + 'test'}")
