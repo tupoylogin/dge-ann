@@ -1,7 +1,9 @@
-user_column: visitorid
-item_column: itemid
-timestamp_column: timestamp
-transaction_type_column: event
+user_column: user_id
+session_column: user_session
+item_column: product_id
+timestamp_column: event_time
+transaction_type_column: event_type
+target_column: target_product_id
 num_walks: 3
 num_steps: 10
 p: 1.

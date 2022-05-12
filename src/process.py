@@ -12,15 +12,17 @@ from omegaconf import DictConfig
 from tqdm import tqdm
 
 
-def get_aggregated_sessions_data(events: pd.DataFrame, timestamp_column: str, user_column: str, item_column: str) -> pd.DataFrame:
-    sessions = events.groupby(
-        [
-            user_column,
-            events[timestamp_column].dt.strftime('%Y-%m-%d %H-%m'), 
-        ]
-    ).agg({item_column: list})
-
+def get_aggregated_sessions_data(events: pd.DataFrame, session_column: str, user_column: str, item_column: str, transaction_type_column: str) -> pd.DataFrame:
+    sessions = events.groupby(session_column).agg(
+        {user_column: 'first', item_column: list, transaction_type_column: list}
+        )
     return sessions
+
+def prepare_dataset_for_sequential_model(sessions: pd.DataFrame, item_column: str, transaction_type_column: str, target_column: str) -> pd.DataFrame:
+    sessions[target_column] = sessions[item_column].map(lambda x: x[-1:])
+    sessions[item_column] = sessions[item_column].map(lambda x: x[:-1])
+    sessions[transaction_type_column] = sessions[transaction_type_column].map(lambda x: x[:-1])
+    return sessions[sessions[item_column].map(len)>1]
 
 def calculate_frequencies(sessions: pd.DataFrame, item_column: str) -> tp.Dict[str, int]:
     pair_frequency = defaultdict(int)
@@ -173,13 +175,15 @@ def process_data(config: DictConfig):
 
     timestamp_column = config.process.timestamp_column
     user_column = config.process.user_column
+    session_column = config.process.session_column
     transaction_type_column = config.process.transaction_type_column
     item_column = config.process.item_column
+    target_column = config.process.target_column
     train_ratio = config.process.train_test_ratio
 
     events = pd.read_csv(raw_path)
     logging.info(f"Constructing KG, train and test datasets {raw_path}")
-    events[timestamp_column] = pd.to_datetime(events[timestamp_column], unit='ms')
+    events[timestamp_column] = pd.to_datetime(events[timestamp_column])
     datetime_for_knowledge_graph = events[timestamp_column].quantile(train_ratio/2).date()
     datetime_for_train_test = events[timestamp_column].quantile(train_ratio).date()
     events_for_kg = events[events[timestamp_column].dt.date<=datetime_for_knowledge_graph]
@@ -195,7 +199,12 @@ def process_data(config: DictConfig):
     logging.info(f"Transaction vocabulary saved to {savefile_path + transaction_type_column}")
 
 
-    sessions_for_kg = get_aggregated_sessions_data(events_for_kg, timestamp_column, user_column, item_column)
+    sessions_for_kg = get_aggregated_sessions_data(events_for_kg, session_column, user_column, item_column, transaction_type_column)
+    sessions_for_train = get_aggregated_sessions_data(events_for_train, session_column, user_column, item_column, transaction_type_column)
+    sessions_for_train = prepare_dataset_for_sequential_model(sessions_for_train, item_column, transaction_type_column, target_column)
+    sessions_for_test = get_aggregated_sessions_data(events_for_train, session_column, user_column, item_column, transaction_type_column)
+    sessions_for_test = prepare_dataset_for_sequential_model(sessions_for_test, item_column, transaction_type_column, target_column)
+
     item_frequency, pair_frequency = calculate_frequencies(sessions_for_kg, item_column)
     knowledge_graph = construct_knowledge_graph(item_frequency, pair_frequency)
     logging.info(f"Total number of graph nodes: {knowledge_graph.number_of_nodes()}")
@@ -222,24 +231,26 @@ def process_data(config: DictConfig):
     logging.info(f"Adjacency matrix of KG saved to {savefile_path + 'adjacency_matrix'}")
     
 
-    events_for_train_ds = tf.data.Dataset.from_tensor_slices(
-        ({
-            user_column: events_for_train[user_column],
-            transaction_type_column: events_for_train[transaction_type_column],
-            item_column: events_for_train[item_column]
-        },)
+    sessions_for_train_ds = tf.data.Dataset.from_tensor_slices(
+        {
+            user_column: sessions_for_train[user_column],
+            transaction_type_column: sessions_for_train[transaction_type_column],
+            item_column: sessions_for_train[item_column],
+            target_column: sessions_for_train[target_column],
+        }
     )
-    tf.data.experimental.save(events_for_train_ds, savefile_path + "train")
+    tf.data.experimental.save(sessions_for_train_ds, savefile_path + "train")
     logging.info(f"Train dataset of KG saved to {savefile_path + 'train'}")
 
-    events_for_test_ds = tf.data.Dataset.from_tensor_slices(
-        ({
-            user_column: events_for_test[user_column],
-            transaction_type_column: events_for_test[transaction_type_column],
-            item_column: events_for_test[item_column]
-        },)
+    sessions_for_test_ds = tf.data.Dataset.from_tensor_slices(
+        {
+            user_column: sessions_for_test[user_column],
+            transaction_type_column: sessions_for_test[transaction_type_column],
+            item_column: sessions_for_test[item_column],
+            target_column: sessions_for_test[target_column],
+        }
     )
-    tf.data.experimental.save(events_for_test_ds, savefile_path + "test")
+    tf.data.experimental.save(sessions_for_test_ds, savefile_path + "test")
     logging.info(f"Test dataset of KG saved to {savefile_path + 'test'}")
 
 if __name__ == '__main__':
