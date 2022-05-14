@@ -20,7 +20,7 @@ def get_aggregated_sessions_data(events: pd.DataFrame, session_column: str, user
 
 def prepare_dataset_for_sequential_model(sessions: pd.DataFrame, item_column: str, transaction_type_column: str, target_column: str) -> pd.DataFrame:
     sessions[target_column] = sessions[item_column].map(lambda x: x[-1:])
-    sessions[item_column] = sessions[item_column].map(lambda x: x[:-1])
+    sessions[item_column] = sessions[item_column].map(lambda x: x[-11:-1])
     sessions[transaction_type_column] = sessions[transaction_type_column].map(lambda x: x[:-1])
     return sessions[sessions[item_column].map(len)>1]
 
@@ -202,7 +202,7 @@ def process_data(config: DictConfig):
     sessions_for_kg = get_aggregated_sessions_data(events_for_kg, session_column, user_column, item_column, transaction_type_column)
     sessions_for_train = get_aggregated_sessions_data(events_for_train, session_column, user_column, item_column, transaction_type_column)
     sessions_for_train = prepare_dataset_for_sequential_model(sessions_for_train, item_column, transaction_type_column, target_column)
-    sessions_for_test = get_aggregated_sessions_data(events_for_train, session_column, user_column, item_column, transaction_type_column)
+    sessions_for_test = get_aggregated_sessions_data(events_for_test, session_column, user_column, item_column, transaction_type_column)
     sessions_for_test = prepare_dataset_for_sequential_model(sessions_for_test, item_column, transaction_type_column, target_column)
 
     item_frequency, pair_frequency = calculate_frequencies(sessions_for_kg, item_column)
