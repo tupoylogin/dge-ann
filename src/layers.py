@@ -89,10 +89,12 @@ class PositionEmbedding(tf.keras.layers.Embedding):
         """
         if inputs is None:
             raise ValueError("Inputs must not be None.")
-        input_shape = inputs.shape # (batch_size, sequence_length)
-        sequence_length = input_shape[1]
-        position_embeddings = self.embeddings[: sequence_length, :][tf.newaxis, ...]
-        position_embeddings = tf.tile(position_embeddings, [*input_shape, self.output_dim])
+        batch_size, sequence_length = inputs.shape # (batch_size, sequence_length)
+        
+        position_embeddings = self.embeddings[: sequence_length, :]
+        new_shape = [1 for _ in position_embeddings.shape]
+
+        position_embeddings = tf.tile(position_embeddings[tf.newaxis, ...], [batch_size, *new_shape])
         return position_embeddings
 
 class RelativePositionEmbedding(tf.keras.layers.Layer):
