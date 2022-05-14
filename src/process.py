@@ -234,9 +234,9 @@ def process_data(config: DictConfig):
     sessions_for_train_ds = tf.data.Dataset.from_tensor_slices(
         {
             user_column: sessions_for_train[user_column],
-            transaction_type_column: sessions_for_train[transaction_type_column],
-            item_column: sessions_for_train[item_column],
-            target_column: sessions_for_train[target_column],
+            transaction_type_column: tf.keras.preprocessing.sequence.pad_sequences(sessions_for_train[transaction_type_column].values.tolist(), dtype=object, value='_PAD_', padding='post'),
+            item_column: tf.keras.preprocessing.sequence.pad_sequences(sessions_for_train[item_column].values.tolist(), value=-1, padding='post'),
+            target_column: sessions_for_train[target_column].values.tolist(),
         }
     )
     tf.data.experimental.save(sessions_for_train_ds, savefile_path + "train")
@@ -245,9 +245,9 @@ def process_data(config: DictConfig):
     sessions_for_test_ds = tf.data.Dataset.from_tensor_slices(
         {
             user_column: sessions_for_test[user_column],
-            transaction_type_column: sessions_for_test[transaction_type_column],
-            item_column: sessions_for_test[item_column],
-            target_column: sessions_for_test[target_column],
+            transaction_type_column: tf.keras.preprocessing.sequence.pad_sequences(sessions_for_test[transaction_type_column].values.tolist(), dtype=object, value='_PAD_', padding='post'),
+            item_column: tf.keras.preprocessing.sequence.pad_sequences(sessions_for_test[item_column].values.tolist(), value=-1, padding='post'),
+            target_column: sessions_for_test[target_column].values.tolist(),
         }
     )
     tf.data.experimental.save(sessions_for_test_ds, savefile_path + "test")
