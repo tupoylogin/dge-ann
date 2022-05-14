@@ -91,7 +91,7 @@ class PositionEmbedding(tf.keras.layers.Embedding):
             raise ValueError("Inputs must not be None.")
         input_shape = inputs.shape # (batch_size, sequence_length)
         sequence_length = input_shape[1]
-        position_embeddings = self.embeddings[: sequence_length, :]
+        position_embeddings = self.embeddings[: sequence_length, :][tf.newaxis, ...]
         position_embeddings = tf.tile(position_embeddings, [*input_shape, self.output_dim])
         return position_embeddings
 
