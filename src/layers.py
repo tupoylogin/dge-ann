@@ -42,7 +42,6 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
         --------
             A tensor in shape of `(length, output_dim)`.
         """
-        neighbors_indices = defaultdict()
         dtype = backend.dtype(inputs)
         if dtype != 'int32' and dtype != 'int64':
             inputs = math_ops.cast(inputs, 'int32')
@@ -54,13 +53,11 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
             out = self._A.indices
             sequence_neighbors = []
             for token in sequence:
-                if token not in neighbors_indices:
-                    neighbor_index = tf.reshape(
-                        tf.gather(self._A.indices, tf.where(self._A.indices[:,0] == token))[:,:,1], (-1,) # second index is neighbor index
-                        )
-                    neighbor_embeddings = embedding_ops.embedding_lookup_v2(self.embeddings, neighbor_index)
-                    neighbors_indices[token] = tf.add_n(neighbor_embeddings)
-                sequence_neighbors.append(neighbors_indices[token])
+                neighbor_index = tf.reshape(
+                    tf.gather(self._A.indices, tf.where(self._A.indices[:,0] == token))[:,:,1], (-1,) # second index is neighbor index
+                    )
+                neighbor_embeddings = embedding_ops.embedding_lookup_v2(self.embeddings, neighbor_index)
+                sequence_neighbors.append(tf.add_n(neighbor_embeddings))
             sequence_neighbors = tf.stack(sequence_neighbors)
             out_neighbors.append(sequence_neighbors)
         out_neighbors = tf.stack(out_neighbors)
