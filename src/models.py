@@ -31,13 +31,14 @@ class Node2Vec(tf.keras.models.Model):
         feature_size = feature_vocab.shape[0] + 1
 
         if feature_type == INTEGER:
-            self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab)
+            self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
         else:
-            self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab)
+            self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
 
-        self.embedding_layer_layer = tf.keras.layers.Embedding(
+        self.embedding_layer = tf.keras.layers.Embedding(
             feature_size, 
-            embedding_dim, 
+            embedding_dim,
+            mask_zero=True 
             embeddings_initializer='he_normal',
             embeddings_regularizer= tf.keras.regularizers.l2(1e-6),
             name="embeddings",
@@ -47,8 +48,8 @@ class Node2Vec(tf.keras.models.Model):
     def call(self, inputs: tp.Dict[str, tf.Tensor]) -> tf.Tensor:
         target_lookup = self.lookup_layer(inputs[self._target_feature])
         context_lookup = self.lookup_layer(inputs[self._context_feature])
-        target_embeddings = self.embedding_layer_layer(target_lookup)
-        context_embeddings = self.embedding_layer_layer(context_lookup)
+        target_embeddings = self.embedding_layer(target_lookup)
+        context_embeddings = self.embedding_layer(context_lookup)
         logits = self.dot([target_embeddings, context_embeddings])
         return logits
 
@@ -79,17 +80,17 @@ class PlainEmbeddingModel(tf.keras.models.Model):
     ---------------------
     """
 
-    def __init__(self, feature_name: str, feature_type: str, feature_vocab: np.ndarray, embedding_dim: int, **kwargs):
+    def __init__(self, feature_name: str, feature_type: str, feature_vocab: np.ndarray, embedding_dim: int, **embedding_kwargs):
         check_feature_type(feature_type)
         
         super().__init__()
         self.feature_name = feature_name
         feature_size = feature_vocab.shape[0] + 1
         if feature_type == INTEGER:
-            self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab)
+            self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
         else:
-            self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab)
-        self.embedding_layer = tf.keras.layers.Embedding(feature_size, embedding_dim)
+            self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
+        self.embedding_layer = tf.keras.layers.Embedding(feature_size, embedding_dim, **embedding_kwargs)
         
     def call(self, inputs: tp.Dict[str, tf.Tensor]):
         feature_lookup = self.lookup_layer(inputs[self.feature_name])
@@ -107,9 +108,9 @@ class LSTMEmbeddingModel(tf.keras.models.Model):
         self.feature_name = feature_name
         feature_size = feature_vocab.shape[0] + 1
         if feature_type == INTEGER:
-            self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab)
+            self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
         else:
-            self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab)
+            self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
         self.embedding_layer = tf.keras.layers.Embedding(feature_size, embedding_dim)
         self.lstm = tf.keras.layers.LSTM(num_recurrent_units)
         
@@ -132,15 +133,15 @@ class AttentionDCN(tf.keras.models.Model):
         feature_size = feature_vocab.shape[0] + 1
 
         if feature_type == INTEGER:
-            self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab)
+            self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
         else:
-            self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab)
+            self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
 
-        self.query_layer_feature = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
-        self.key_layer_feature = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
+        self.query_layer_feature = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters)
+        self.key_layer_feature = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters)
 
-        self.query_layer_position = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
-        self.key_layer_position = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
+        self.query_layer_position = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters)
+        self.key_layer_position = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters)
 
         self.attention = tf.keras.layers.Attention(use_scale=True, causal=True)
         self.average_pooling = tf.keras.layers.GlobalAveragePooling1D()

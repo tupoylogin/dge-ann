@@ -21,7 +21,7 @@ def get_aggregated_sessions_data(events: pd.DataFrame, session_column: str, user
 def prepare_dataset_for_sequential_model(sessions: pd.DataFrame, item_column: str, transaction_type_column: str, target_column: str) -> pd.DataFrame:
     sessions[target_column] = sessions[item_column].map(lambda x: x[-1:])
     sessions[item_column] = sessions[item_column].map(lambda x: x[-11:-1])
-    sessions[transaction_type_column] = sessions[transaction_type_column].map(lambda x: x[:-1])
+    sessions[transaction_type_column] = sessions[transaction_type_column].map(lambda x: x[-11:-1])
     return sessions[sessions[item_column].map(len)>1]
 
 def calculate_frequencies(sessions: pd.DataFrame, item_column: str) -> tp.Dict[str, int]:
@@ -235,7 +235,7 @@ def process_data(config: DictConfig):
         {
             user_column: sessions_for_train[user_column],
             transaction_type_column: tf.keras.preprocessing.sequence.pad_sequences(sessions_for_train[transaction_type_column].values.tolist(), dtype=object, value='_PAD_', padding='post'),
-            item_column: tf.keras.preprocessing.sequence.pad_sequences(sessions_for_train[item_column].values.tolist(), value=-1, padding='post'),
+            item_column: tf.keras.preprocessing.sequence.pad_sequences(sessions_for_train[item_column].values.tolist(), value=0, padding='post'),
             target_column: sessions_for_train[target_column].values.tolist(),
         }
     )
@@ -246,7 +246,7 @@ def process_data(config: DictConfig):
         {
             user_column: sessions_for_test[user_column],
             transaction_type_column: tf.keras.preprocessing.sequence.pad_sequences(sessions_for_test[transaction_type_column].values.tolist(), dtype=object, value='_PAD_', padding='post'),
-            item_column: tf.keras.preprocessing.sequence.pad_sequences(sessions_for_test[item_column].values.tolist(), value=-1, padding='post'),
+            item_column: tf.keras.preprocessing.sequence.pad_sequences(sessions_for_test[item_column].values.tolist(), value=0, padding='post'),
             target_column: sessions_for_test[target_column].values.tolist(),
         }
     )
