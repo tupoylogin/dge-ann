@@ -38,7 +38,7 @@ class Node2Vec(tf.keras.models.Model):
         self.embedding_layer = tf.keras.layers.Embedding(
             feature_size, 
             embedding_dim,
-            mask_zero=True 
+            mask_zero=True, 
             embeddings_initializer='he_normal',
             embeddings_regularizer= tf.keras.regularizers.l2(1e-6),
             name="embeddings",
@@ -90,7 +90,7 @@ class PlainEmbeddingModel(tf.keras.models.Model):
             self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
         else:
             self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
-        self.embedding_layer = tf.keras.layers.Embedding(feature_size, embedding_dim, **embedding_kwargs)
+        self.embedding_layer = tf.keras.layers.Embedding(feature_size, embedding_dim, mask_zero=True, **embedding_kwargs)
         
     def call(self, inputs: tp.Dict[str, tf.Tensor]):
         feature_lookup = self.lookup_layer(inputs[self.feature_name])
@@ -111,7 +111,7 @@ class LSTMEmbeddingModel(tf.keras.models.Model):
             self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
         else:
             self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
-        self.embedding_layer = tf.keras.layers.Embedding(feature_size, embedding_dim)
+        self.embedding_layer = tf.keras.layers.Embedding(feature_size, embedding_dim, mask_zero=True)
         self.lstm = tf.keras.layers.LSTM(num_recurrent_units)
         
     def call(self, inputs: tp.Dict[str, tf.Tensor]):
