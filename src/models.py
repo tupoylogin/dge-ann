@@ -1,3 +1,4 @@
+from tkinter import _Padding
 import typing as tp
 from collections import defaultdict
 
@@ -123,7 +124,7 @@ class AttentionDCN(tf.keras.models.Model):
     Attention Deep Cross Network
     ----------------------------
     """
-    def __init__(self, feature_name: str, feature_type: str, feature_vocab: np.ndarray, embedding_dim: int, deep_model_layer_sizes: int, use_cross_layer: bool, *, position_embeddings: str = None, embedding_type: str = 'plain', projection_dim: int = 32, **embedding_kwargs): 
+    def __init__(self, feature_name: str, feature_type: str, feature_vocab: np.ndarray, embedding_dim: int, deep_model_layer_sizes: int, use_cross_layer: bool, *, position_embeddings: str = None, embedding_type: str = 'plain', projection_dim: int = 32, conv_filters: int = 4, **embedding_kwargs): 
         check_feature_type(feature_type)
         check_embedding_type(embedding_type)
 
@@ -131,19 +132,16 @@ class AttentionDCN(tf.keras.models.Model):
         self.feature_name = feature_name
         feature_size = feature_vocab.shape[0] + 1
 
-
         if feature_type == INTEGER:
             self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab)
         else:
             self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab)
 
-        self.query_layer_feature = tf.keras.layers.Dense(units=feature_size)
-        self.key_layer_feature = tf.keras.layers.Dense(units=feature_size)
-        self.value_layer_feature = tf.keras.layers.Dense(units=feature_size)
+        self.query_layer_feature = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
+        self.key_layer_feature = tf.keras.layers.Conv1D(units=feature_size, padding="same", kernel_size=conv_filters)
 
-        self.query_layer_position = tf.keras.layers.Dense(units=feature_size)
-        self.key_layer_position = tf.keras.layers.Dense(units=feature_size)
-        self.value_layer_position = tf.keras.layers.Dense(units=feature_size)
+        self.query_layer_position = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
+        self.key_layer_position = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
 
         self.attention = tf.keras.layers.Attention(use_scale=True, causal=True)
         self.average_pooling = tf.keras.layers.GlobalAveragePooling1D()
@@ -176,22 +174,18 @@ class AttentionDCN(tf.keras.models.Model):
 
         item_query = self.query_layer_feature(item_embedding)
         item_key = self.key_layer_feature(item_embedding)
-        item_value = self.value_layer_feature(item_embedding)
 
         if self.position_embedding is not None:
             position_embedding = self.position_embedding(input[self.feature_name])
-            print(position_embedding)
             position_query = self.query_layer_position(position_embedding)
             position_key = self.key_layer_position(position_embedding)
-            position_value = self.value_layer_position(position_embedding)
 
             q = tf.add(item_query, position_query)
             k = tf.add(item_key, position_key)
-            v = tf.add(item_value, position_value)
 
-            attn = self.attention([q, k, v])
+            attn = self.attention([q, k])
         else:
-            attn = self.attention([item_query, item_key, item_value])
+            attn = self.attention([item_query, item_key])
         
         attn = self.average_pooling(attn)
 
