@@ -189,12 +189,12 @@ class AttentionDCN(tf.keras.models.Model):
         attn = self.average_pooling(attn)
 
         if self.cross_layer is not None:
-            x_0 = self.cross_layer(attn)
+            attn = self.cross_layer(attn)
         
         for layer in self.deep_model:
-            x_0 = layer(x_0)
+            attn = layer(attn)
         
-        out = self.candidate_layer(x_0)
+        out = self.candidate_layer(attn)
         return out
 
 class RetrievalModel(tfrs.Model):
