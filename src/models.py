@@ -1,4 +1,3 @@
-from tkinter import _Padding
 import typing as tp
 from collections import defaultdict
 
