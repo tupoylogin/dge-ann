@@ -137,7 +137,7 @@ class AttentionDCN(tf.keras.models.Model):
             self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab)
 
         self.query_layer_feature = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
-        self.key_layer_feature = tf.keras.layers.Conv1D(units=feature_size, padding="same", kernel_size=conv_filters)
+        self.key_layer_feature = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
 
         self.query_layer_position = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
         self.key_layer_position = tf.keras.layers.Conv1D(filters=feature_size, padding="same", kernel_size=conv_filters)
