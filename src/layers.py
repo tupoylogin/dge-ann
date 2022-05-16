@@ -31,13 +31,17 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
         base_config = super(RelativePositionEmbedding, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-    def _get_aggregated_neighbor_embeddings(self, token: tf.Tensor) -> tf.Tensor:
+    def _select_neighbors_for_index(self, token: int):
         neighbor_index = tf.squeeze(
-                    tf.gather(self._A.indices, tf.where(self._A.indices[:,0] == token))[:,:,1] # second index is neighbor index
-                    )
+                    tf.gather(self._A.indices, tf.where(self._A.indices[:,0] == token))[:,:,1], # second index is neighbor index
+                    axis=[-1])
         neighbor_embeddings = embedding_ops.embedding_lookup_v2(self.embeddings, neighbor_index)
         return tf.reduce_sum(neighbor_embeddings, axis=0)
-
+    
+    def _get_aggregated_neighbor_embeddings(self, token: tf.Tensor) -> tf.Tensor:
+        neighbors = tf.map_fn(self._select_neighbors_for_index, token, fn_output_signature=tf.float32)
+        return neighbors
+        
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
         """
         Arguments:
