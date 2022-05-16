@@ -36,9 +36,7 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
                     tf.gather(self._A.indices, tf.where(self._A.indices[:,0] == token))[:,:,1], (-1,) # second index is neighbor index
                     )
         neighbor_embeddings = embedding_ops.embedding_lookup_v2(self.embeddings, neighbor_index)
-        if neighbor_embeddings.shape[0] > 0:
-            return tf.reduce_sum(neighbor_embeddings, axis=0)
-        return tf.constant([0 for _ in range(self.output_dim)], dtype=tf.float32)
+        return tf.reduce_sum(neighbor_embeddings, axis=0)
 
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
         """
@@ -55,11 +53,7 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
             inputs = math_ops.cast(inputs, 'int32')
         out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
         out = tf.multiply(out, 1 - self.decay_rate)
-        out_neighbors = []
-        for sequence in inputs:
-            sequence_neighbors = tf.map_fn(self._get_aggregated_neighbor_embeddings, sequence, fn_output_signature=tf.float32)
-            out_neighbors.append(sequence_neighbors)
-        out_neighbors = tf.stack(out_neighbors)
+        out_neighbors = tf.map_fn(self._get_aggregated_neighbor_embeddings, inputs, fn_output_signature=tf.float32)
         out_neighbors = tf.multiply(out_neighbors, self.decay_rate)
         out = out + out_neighbors
         if self._dtype_policy.compute_dtype != self._dtype_policy.variable_dtype:
@@ -87,15 +81,11 @@ class PositionEmbedding(tf.keras.layers.Embedding):
         --------
             A tensor in shape of `(length, output_dim)`.
         """
-        if inputs is None:
-            raise ValueError("Inputs must not be None.")
-        batch_size, sequence_length = inputs.shape # (batch_size, sequence_length)
-        
-        position_embeddings = self.embeddings[: sequence_length, :]
-        new_shape = [1 for _ in position_embeddings.shape]
-
-        position_embeddings = tf.tile(position_embeddings[tf.newaxis, ...], [batch_size, *new_shape])
-        return position_embeddings
+        input_shape = tf.shape(inputs[..., tf.newaxis])
+        actual_seq_len = input_shape[1]
+        position_embeddings = self.embeddings[tf.newaxis, :actual_seq_len, :]
+        new_shape = tf.where([True, True, False], input_shape, tf.shape(position_embeddings))
+        return tf.broadcast_to(position_embeddings, new_shape)
 
 class RelativePositionEmbedding(tf.keras.layers.Layer):
     """
