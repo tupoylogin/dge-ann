@@ -124,7 +124,7 @@ class AttentionDCN(tf.keras.models.Model):
     Attention Deep Cross Network
     ----------------------------
     """
-    def __init__(self, feature_name: str, feature_type: str, feature_vocab: np.ndarray, embedding_dim: int, deep_model_layer_sizes: int, use_cross_layer: bool, *, position_embeddings: str = None, embedding_type: str = 'plain', projection_dim: int = 32, conv_filters: int = 4, **embedding_kwargs): 
+    def __init__(self, feature_name: str, feature_type: str, feature_vocab: np.ndarray, embedding_dim: int, deep_model_layer_sizes: int, use_cross_layer: bool, sequence_length: int, *, position_embeddings: str = None, embedding_type: str = 'plain', projection_dim: int = 32, conv_filters: int = 4, **embedding_kwargs): 
         check_feature_type(feature_type)
         check_embedding_type(embedding_type)
 
@@ -137,11 +137,11 @@ class AttentionDCN(tf.keras.models.Model):
         else:
             self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
 
-        self.query_layer_feature = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters)
-        self.key_layer_feature = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters)
+        self.query_layer_feature = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters, input_shape=(10 ,embedding_dim))
+        self.key_layer_feature = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters, input_shape=(10 ,embedding_dim))
 
-        self.query_layer_position = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters)
-        self.key_layer_position = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters)
+        self.query_layer_position = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters, input_shape=(10 ,embedding_dim))
+        self.key_layer_position = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters, input_shape=(10 ,embedding_dim))
 
         self.attention = tf.keras.layers.Attention(use_scale=True, causal=True)
         self.average_pooling = tf.keras.layers.GlobalAveragePooling1D()
