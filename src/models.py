@@ -94,7 +94,7 @@ class PlainEmbeddingModel(tf.keras.models.Model):
         
     def call(self, inputs: tp.Dict[str, tf.Tensor]):
         feature_lookup = self.lookup_layer(inputs[self.feature_name])
-        return self.embedding_layer(feature_lookup)
+        return tf.squeeze(self.embedding_layer(feature_lookup), axis=[1]) # output shape (batch_size, embedding_dim)
 
 class LSTMEmbeddingModel(tf.keras.models.Model):
     """
