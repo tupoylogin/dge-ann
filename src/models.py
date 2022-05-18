@@ -94,7 +94,7 @@ class PlainEmbeddingModel(tf.keras.models.Model):
         
     def call(self, inputs: tp.Dict[str, tf.Tensor]):
         feature_lookup = self.lookup_layer(inputs[self.feature_name])
-        return tf.squeeze(self.embedding_layer(feature_lookup), axis=[1]) # output shape (batch_size, embedding_dim)
+        return self.embedding_layer(feature_lookup) # output shape (batch_size, embedding_dim)
 
 class LSTMEmbeddingModel(tf.keras.models.Model):
     """
@@ -140,15 +140,15 @@ class AttentionDCN(tf.keras.models.Model):
         self.query_layer_feature = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters, input_shape=(sequence_length ,embedding_dim))
         self.key_layer_feature = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters, input_shape=(sequence_length ,embedding_dim))
 
-        self.query_layer_position = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters, input_shape=(sequence_length ,embedding_dim))
-        self.key_layer_position = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters, input_shape=(sequence_length ,embedding_dim))
-
         self.attention = tf.keras.layers.Attention(use_scale=True, causal=True)
         self.average_pooling = tf.keras.layers.GlobalAveragePooling1D()
 
         self.position_embedding = None
         if position_embeddings:
             check_position_embedding_type(position_embeddings)
+            self.query_layer_position = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters, input_shape=(sequence_length ,embedding_dim))
+            self.key_layer_position = tf.keras.layers.Conv1D(filters=embedding_dim, padding="same", kernel_size=conv_filters, input_shape=(sequence_length ,embedding_dim))
+            
             if position_embeddings == RELATIVE:
                 self.position_embedding = RelativePositionEmbedding(output_dim=embedding_dim)
             else:
@@ -214,7 +214,7 @@ class RetrievalModel(tfrs.Model):
 
         self.task = tfrs.tasks.Retrieval(
             metrics=tfrs.metrics.FactorizedTopK(
-                candidates=candidate_pool.batch(128).map(self.candidate_model),
+                candidates=candidate_pool.batch(1024).map(self.candidate_model),
                 k=100,
                 metrics=[
                         tfrk.keras.metrics.MeanAveragePrecisionMetric(topn=1, name='map_1'),

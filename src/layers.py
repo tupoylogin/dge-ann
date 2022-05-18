@@ -20,7 +20,7 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
     def __init__(self, input_dim: int, output_dim: int, *, known_items_relations: tf.SparseTensor, embeddings_initializer: tp.Union[str, Initializer] = 'uniform', **kwargs):
         if 'decay_rate' in kwargs:
             self.decay_rate = kwargs.pop('decay_rate')
-        self.decay_rate = 0.1
+        self.decay_rate = 0.5
         self._A = known_items_relations
         super().__init__(input_dim, output_dim, embeddings_initializer=embeddings_initializer, **kwargs)
 
