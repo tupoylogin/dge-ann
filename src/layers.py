@@ -1,5 +1,6 @@
 import math
 import typing as tp
+import numpy as np
 from collections import defaultdict
 
 import tensorflow as tf
@@ -24,6 +25,16 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
         self._A = known_items_relations
         super().__init__(input_dim, output_dim, embeddings_initializer=embeddings_initializer, **kwargs)
 
+    def build(self, input_shape: tp.Optional[tp.Union[int, tp.Tuple]] = None):
+        super().build(input_shape)
+        self._neighbors = math_ops.cast(
+          self._get_neighbors_tensor(
+            tf.constant(list(range(self.input_dim)), dtype=tf.int64)
+            ),
+          'int32'
+        ) 
+        self.built = True
+
     def get_config(self) -> tp.Dict[str, tp.Any]:
         config = {
             "decay_rate": self.decay_rate,
@@ -31,15 +42,20 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
         base_config = super(RelativePositionEmbedding, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-    def _select_neighbors_for_index(self, token: int):
+    def _get_neighbors_for_index(self, token: int):
         neighbor_index = tf.squeeze(
                     tf.gather(self._A.indices, tf.where(self._A.indices[:,0] == token))[:,:,1], # second index is neighbor index
-                    axis=[-1])
-        neighbor_embeddings = embedding_ops.embedding_lookup_v2(self.embeddings, neighbor_index)
-        return tf.reduce_sum(neighbor_embeddings, axis=0)
+                    axis=-1)
+        return neighbor_index
     
-    def _get_aggregated_neighbor_embeddings(self, token: tf.Tensor) -> tf.Tensor:
-        neighbors = tf.map_fn(self._select_neighbors_for_index, token, fn_output_signature=tf.float32)
+    @tf.function
+    def _get_neighbors_tensor(self, token: tf.Tensor) -> tf.Tensor:
+        neighbors = tf.map_fn(
+            self._get_neighbors_for_index, 
+            token, 
+            parallel_iterations=10,
+            fn_output_signature=tf.RaggedTensorSpec(shape=[None], dtype=tf.int64)
+            )
         return neighbors
         
     def call(self, inputs: tf.Tensor) -> tf.Tensor:
@@ -57,7 +73,10 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
             inputs = math_ops.cast(inputs, 'int32')
         out = embedding_ops.embedding_lookup_v2(self.embeddings, inputs)
         out = tf.multiply(out, 1 - self.decay_rate)
-        out_neighbors = tf.map_fn(self._get_aggregated_neighbor_embeddings, inputs, fn_output_signature=tf.float32)
+        out_neighbors = embedding_ops.embedding_lookup_v2(self.embeddings, 
+                                  tf.gather(self._neighbors, inputs)
+                                  )
+        out_neighbors = tf.reduce_sum(out_neighbors, axis=2).to_tensor()
         out_neighbors = tf.multiply(out_neighbors, self.decay_rate)
         out = out + out_neighbors
         if self._dtype_policy.compute_dtype != self._dtype_policy.variable_dtype:
