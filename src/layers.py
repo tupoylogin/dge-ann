@@ -108,7 +108,8 @@ class PositionEmbedding(tf.keras.layers.Embedding):
         actual_seq_len = input_shape[1]
         position_embeddings = self.embeddings[tf.newaxis, :actual_seq_len, :]
         new_shape = tf.where([True, True, False], input_shape, tf.shape(position_embeddings))
-        return tf.broadcast_to(position_embeddings, new_shape)
+        position_embeddings = tf.broadcast_to(position_embeddings, new_shape)
+        return position_embeddings
 
 class RelativePositionEmbedding(tf.keras.layers.Layer):
     """
@@ -171,8 +172,8 @@ class RelativePositionEmbedding(tf.keras.layers.Layer):
                         "If inputs is not None, `length` must equal to input_shape[1].")
             length = input_shape[1]
         position = tf.cast(tf.range(length), tf.float32)
-        num_timescales = self._output_dim // 2
-        min_timescale, max_timescale = self._min_timescale, self._max_timescale
+        num_timescales = self.output_dim // 2
+        min_timescale, max_timescale = self.min_timescale, self.max_timescale
         log_timescale_increment = (
             math.log(float(max_timescale) / float(min_timescale)) /
             (tf.cast(num_timescales, tf.float32) - 1))
@@ -181,6 +182,12 @@ class RelativePositionEmbedding(tf.keras.layers.Layer):
             -log_timescale_increment)
         scaled_time = tf.expand_dims(position, 1) * tf.expand_dims(
             inv_timescales, 0)
-        position_embeddings = tf.concat(
-            [tf.sin(scaled_time), tf.cos(scaled_time)], axis=1)
+        position_embeddings = tf.expand_dims(
+          tf.concat(
+            [tf.sin(scaled_time), tf.cos(scaled_time)], axis=1
+            ), axis=0
+        )
+        if inputs is not None:
+            new_shape = tf.where([True, False, False], tf.shape(inputs[..., tf.newaxis]), tf.shape(position_embeddings))
+            position_embeddings = tf.broadcast_to(position_embeddings, new_shape)
         return position_embeddings
