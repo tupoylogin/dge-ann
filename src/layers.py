@@ -18,7 +18,12 @@ class NeighborEmbedding(tf.keras.layers.Embedding):
         input_dim: Size of sequence.
         output_dim: Size of the hidden layer.
     """
-    def __init__(self, input_dim: int, output_dim: int, *, known_items_relations: tf.SparseTensor, embeddings_initializer: tp.Union[str, Initializer] = 'uniform', **kwargs):
+    def __init__(self, 
+                 input_dim: int, 
+                 output_dim: int, *, 
+                 known_items_relations: tf.SparseTensor, 
+                 embeddings_initializer: tp.Union[str, Initializer] = 'uniform',
+                 **kwargs):
         if 'decay_rate' in kwargs:
             self.decay_rate = kwargs.pop('decay_rate')
         self.decay_rate = 0.5
