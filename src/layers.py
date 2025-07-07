@@ -260,7 +260,7 @@ class HiPPOCell(tf.keras.layers.Layer):
         # Input matrix B
         self.B = self.add_weight(
             name='B',
-            shape=(self.state_size, 1),
+            shape=(self.state_size, self.state_size),
             initializer=tf.keras.initializers.Constant(self.B_init),
             trainable=self.trainable_B
         )
