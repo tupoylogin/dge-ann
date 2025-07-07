@@ -311,6 +311,8 @@ class HiPPOEmbeddingModel(tf.keras.models.Model):
         acc_expanded = tf.expand_dims(self.count_layer, 0)
         acc_broadcasted = tf.broadcast_to(acc_expanded, target_shape)
         adj_matrix = self.count_to_adj_layer(acc_broadcasted)
+        target_shape = [batch_size] + self.intensity_layer.shape.as_list()
+        self.intensity_layer = tf.broadcast_to(acc_expanded, target_shape)
         hippo_out, state = self.hippo(adj_matrix, self.intensity_layer)
         self.intensity_layer = state
         output = self.candidate_layer(hippo_out[:, -1, :]) # return last output embedding
