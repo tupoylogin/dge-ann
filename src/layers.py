@@ -8,6 +8,8 @@ from tensorflow.keras import backend
 from tensorflow.keras.initializers import Initializer
 from tensorflow.python.ops import embedding_ops, math_ops
 
+from .model_utils import HiPPOMatrix
+
 
 class NeighborEmbedding(tf.keras.layers.Embedding):
     """
@@ -196,3 +198,174 @@ class RelativePositionEmbedding(tf.keras.layers.Layer):
             new_shape = tf.where([True, False, False], tf.shape(inputs[..., tf.newaxis]), tf.shape(position_embeddings))
             position_embeddings = tf.broadcast_to(position_embeddings, new_shape)
         return position_embeddings
+    
+
+class HiPPOCell(tf.keras.layers.Layer):
+    """Single HiPPO cell implementing the continuous-time dynamics."""
+    
+    def __init__(self, 
+                 state_size: int,
+                 hippo_type: str = 'legendre',
+                 theta: float = 1.0,
+                 dt: float = 1.0,
+                 trainable_A: bool = False,
+                 trainable_B: bool = True,
+                 trainable_theta: bool = False,
+                 **kwargs):
+        super(HiPPOCell, self).__init__(**kwargs)
+        
+        self.state_size = state_size
+        self.hippo_type = hippo_type.lower()
+        self.theta = theta
+        self.dt = dt
+        self.trainable_A = trainable_A
+        self.trainable_B = trainable_B
+        self.trainable_theta = trainable_theta
+        
+        # Generate HiPPO matrices
+        if self.hippo_type == 'legendre':
+            A_init, B_init = HiPPOMatrix.legendre(state_size)
+        elif self.hippo_type == 'legendre_scaled' or self.hippo_type == 'legs':
+            A_init, B_init = HiPPOMatrix.legendre_scaled(state_size, theta)
+        elif self.hippo_type == 'laguerre':
+            A_init = HiPPOMatrix.laguerre(state_size)
+            B_init = np.ones((state_size, 1), dtype=np.float32)
+        elif self.hippo_type == 'fourier':
+            A_init = HiPPOMatrix.fourier(state_size)
+            B_init = np.ones((state_size, 1), dtype=np.float32)
+        else:
+            raise ValueError(f"Unknown HiPPO type: {hippo_type}")
+            
+        self.A_init = A_init.astype(np.float32)
+        self.B_init = B_init.astype(np.float32)
+        
+    def build(self, input_shape):
+        # Theta parameter (for HiPPO-LegS)
+        if self.hippo_type in ['legendre_scaled', 'legs']:
+            self.theta_param = self.add_weight(
+                name='theta',
+                shape=(),
+                initializer=tf.keras.initializers.Constant(self.theta),
+                trainable=self.trainable_theta
+            )
+        
+        # HiPPO transition matrix A
+        self.A = self.add_weight(
+            name='A',
+            shape=(self.state_size, self.state_size),
+            initializer=tf.keras.initializers.Constant(self.A_init),
+            trainable=self.trainable_A
+        )
+        
+        # Input matrix B
+        self.B = self.add_weight(
+            name='B',
+            shape=(self.state_size, 1),
+            initializer=tf.keras.initializers.Constant(self.B_init),
+            trainable=self.trainable_B
+        )
+        
+        super(HiPPOCell, self).build(input_shape)
+    
+    def _get_discretized_matrices(self):
+        """Get discretized A and B matrices."""
+        if self.hippo_type in ['legendre_scaled', 'legs']:
+            # For HiPPO-LegS, update A and B based on current theta
+            A_continuous = self.A * self.theta_param
+            B_continuous = self.B * tf.sqrt(self.theta_param)
+        else:
+            A_continuous = self.A
+            B_continuous = self.B
+        
+        # Discretize the continuous system using zero-order hold
+        A_dt = A_continuous * self.dt
+        Ad = tf.linalg.expm(A_dt)
+        
+        # Compute Bd = A^{-1} @ (Ad - I) @ B
+        if self.dt < 0.1:
+            # Series expansion for small dt
+            I = tf.eye(self.state_size, dtype=tf.float32)
+            A_inv_exp_minus_I = (self.dt * I + 
+                               (self.dt**2 / 2) * A_continuous + 
+                               (self.dt**3 / 6) * tf.linalg.matmul(A_continuous, A_continuous))
+        else:
+            # Exact formula for larger dt
+            try:
+                A_inv = tf.linalg.inv(A_continuous + 1e-8 * tf.eye(self.state_size))
+                I = tf.eye(self.state_size, dtype=tf.float32)
+                A_inv_exp_minus_I = tf.linalg.matmul(A_inv, Ad - I)
+            except:
+                # Fallback to series expansion if inversion fails
+                I = tf.eye(self.state_size, dtype=tf.float32)
+                A_inv_exp_minus_I = (self.dt * I + 
+                                   (self.dt**2 / 2) * A_continuous)
+        
+        Bd = tf.linalg.matmul(A_inv_exp_minus_I, B_continuous)
+        
+        return Ad, Bd
+    
+    def call(self, inputs, states):
+        # inputs: (batch_size, input_dim)
+        # states: [(batch_size, state_size)]
+        
+        prev_state = states[0]
+        
+        # Get discretized matrices
+        Ad, Bd = self._get_discretized_matrices()
+        
+        # Apply discrete HiPPO update
+        # x[k+1] = Ad @ x[k] + Bd @ u[k]
+        new_state = (tf.linalg.matvec(Ad, prev_state) + 
+                    tf.linalg.matvec(Bd, inputs))
+        
+        return new_state, [new_state]
+    
+    def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+        return [tf.zeros((batch_size, self.state_size), dtype=dtype)]
+
+class HiPPOLayer(tf.keras.layers.Layer):
+    """HiPPO layer that processes sequences."""
+    
+    def __init__(self, 
+                 state_size: int,
+                 hippo_type: str = 'legendre',
+                 theta: float = 1.0,
+                 dt: float = 1.0,
+                 return_sequences: bool = False,
+                 return_state: bool = False,
+                 trainable_A: bool = False,
+                 trainable_B: bool = True,
+                 trainable_theta: bool = False,
+                 **kwargs):
+        super(HiPPOLayer, self).__init__(**kwargs)
+        
+        self.state_size = state_size
+        self.hippo_type = hippo_type
+        self.theta = theta
+        self.dt = dt
+        self.return_sequences = return_sequences
+        self.return_state = return_state
+        self.trainable_A = trainable_A
+        self.trainable_B = trainable_B
+        self.trainable_theta = trainable_theta
+        
+        # Create HiPPO cell
+        self.cell = HiPPOCell(
+            state_size=state_size,
+            hippo_type=hippo_type,
+            theta=theta,
+            dt=dt,
+            trainable_A=trainable_A,
+            trainable_B=trainable_B,
+            trainable_theta=trainable_theta
+        )
+        
+        # Create RNN layer
+        self.rnn = tf.keras.layers.RNN(
+            self.cell,
+            return_sequences=return_sequences,
+            return_state=return_state
+        )
+    
+    def call(self, inputs, initial_state=None):
+        return self.rnn(inputs, initial_state=initial_state)

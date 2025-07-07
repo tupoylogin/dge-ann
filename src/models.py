@@ -8,7 +8,7 @@ import tensorflow_recommenders as tfrs
 
 from .constants import INTEGER, PLAIN, RELATIVE
 from .layers import (NeighborEmbedding, PositionEmbedding,
-                     RelativePositionEmbedding)
+                     RelativePositionEmbedding, HiPPOLayer)
 from .model_utils import (check_embedding_type, check_feature_type,
                           check_position_embedding_type)
 
@@ -190,6 +190,79 @@ class AttentionDCN(tf.keras.models.Model):
         
         out = self.candidate_layer(attn)
         return out
+    
+class HiPPOEmbeddingModel(tf.keras.models.Model):
+    """
+    HiPPO Embedding Model
+    ---------------------
+    """
+    def __init__(self, 
+                 feature_name: str, 
+                 feature_vocab: tp.List[tp.Any], 
+                 embedding_dim: int, 
+                 num_recurrent_units: int, 
+                 hippo_trainable: bool = True,
+                 feature_type: str = "str",
+                 initial_value: np.ndarray = None):
+        check_feature_type(feature_type)
+        
+        super().__init__()
+        self.feature_name = feature_name
+        feature_size = feature_vocab.shape[0] + 1
+        if feature_type == INTEGER:
+            self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
+        else:
+            self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
+        self.intensity_layer = tf.keras.layers.Embedding(feature_size, embedding_dim, mask_zero=True)
+        if not initial_value:
+            initial_value = tf.keras.initializers.Constant(0.)(shape=(feature_size, feature_size))
+        self.count_layer = tf.Variable(tf.zeros((feature_size, feature_size), dtype=tf.float32))
+        self.count_to_adj_layer = tf.keras.layers.Conv1D(activation='tanh', padding="same", filters=feature_size, strides=1)
+
+        self.hippo = HiPPOLayer(state_size=embedding_dim, 
+                                hippo_type='legendre_scaled',
+                                theta=1.,
+                                return_sequences=True,
+                                return_state=True,
+                                trainable_A=hippo_trainable,
+                                trainable_B=hippo_trainable,
+                                trainable_theta=True
+                                )
+        
+        self.candidate_layer = tf.keras.layers.Dense(embedding_dim)
+
+    @tf.function
+    def batch_update_accumulator(self, acc, batch_sessions):
+        """Update accumulator with multiple sessions at once."""
+        all_indices = []
+        
+        for session_data in batch_sessions:
+            session_indices = []
+            for i in range(len(session_data)):
+                for j in range(i, len(session_data)):
+                    if i != j:
+                        session_indices.append([session_data[i], session_data[j]])
+            all_indices.extend(session_indices)
+        
+        if all_indices:
+            indices = tf.constant(all_indices)
+            updates = tf.ones(len(all_indices), dtype=acc.dtype)
+            acc.scatter_nd_add(indices, updates)    
+    
+    def call(self, inputs: tp.Dict[str, tf.Tensor], training: bool = False):
+        feature_lookup = self.lookup_layer(inputs[self.feature_name])
+        self.batch_update_accumulator(self.count_layer, feature_lookup)
+        batch_size = tf.shape(inputs[self.feature_name])[0]
+        target_shape = [batch_size] + self.count_layer.shape.as_list()
+        acc_expanded = tf.expand_dims(self.count_layer, 0)
+        acc_broadcasted = tf.broadcast_to(acc_expanded, target_shape)
+        adj_matrix = self.count_to_adj_layer(acc_broadcasted)
+        feature_embedding = self.embedding_layer(feature_lookup)
+        hippo_out, state = self.hippo(adj_matrix, initial_state=feature_embedding)
+        output = self.candidate_layer(hippo_out[:, -1, :]) # return last output embedding
+        if not training:
+            return output
+        return output, hippo_out, state
 
 class RetrievalModel(tfrs.Model):
     """
