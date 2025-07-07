@@ -213,13 +213,13 @@ class HiPPOEmbeddingModel(tf.keras.models.Model):
             self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
         else:
             self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
-        self.intensity_layer = tf.Variable(tf.zeros((feature_size * feature_size), dtype=tf.float32))
+        self.intensity_layer = tf.Variable(tf.zeros((feature_size), dtype=tf.float32))
         if not initial_value:
             initial_value = tf.keras.initializers.Constant(0.)(shape=(feature_size, feature_size))
         self.count_layer = tf.Variable(tf.zeros((feature_size, feature_size), dtype=tf.float32))
         self.count_to_adj_layer = tf.keras.layers.Conv1D(activation='tanh', padding="same", filters=feature_size, strides=1, kernel_size=1)
 
-        self.hippo = HiPPOLayer(state_size=feature_size*feature_size, 
+        self.hippo = HiPPOLayer(state_size=feature_size, 
                                 hippo_type='legendre_scaled',
                                 theta=1.,
                                 return_sequences=True,

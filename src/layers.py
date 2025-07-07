@@ -321,7 +321,7 @@ class HiPPOCell(tf.keras.layers.Layer):
         return new_state, [new_state]
     
     def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-        return [tf.zeros((batch_size, self.state_size, self.state_size), dtype=dtype)]
+        return [tf.zeros((batch_size, self.state_size), dtype=dtype)]
 
 class HiPPOLayer(tf.keras.layers.Layer):
     """HiPPO layer that processes sequences."""
