@@ -308,20 +308,20 @@ class HiPPOCell(tf.keras.layers.Layer):
         # inputs: (batch_size, input_dim)
         # states: [(batch_size, state_size)]
         
-        prev_state = states[0]
+        prev_state = states
         
         # Get discretized matrices
         Ad, Bd = self._get_discretized_matrices()
         
         # Apply discrete HiPPO update
         # x[k+1] = Ad @ x[k] + Bd @ u[k]
-        new_state = (tf.linalg.matvec(Ad, prev_state) + 
-                    tf.linalg.matvec(Bd, inputs))
+        new_state = (tf.linalg.matmul(Ad, prev_state) + 
+                    tf.linalg.matmul(Bd, inputs))
         
         return new_state, [new_state]
     
     def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-        return [tf.zeros((batch_size, self.state_size), dtype=dtype)]
+        return [tf.zeros((batch_size, self.state_size, self.state_size), dtype=dtype)]
 
 class HiPPOLayer(tf.keras.layers.Layer):
     """HiPPO layer that processes sequences."""
