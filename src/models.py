@@ -213,13 +213,13 @@ class HiPPOEmbeddingModel(tf.keras.models.Model):
             self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
         else:
             self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
-        self.intensity_layer = tf.keras.layers.Embedding(feature_size, embedding_dim, mask_zero=True)
+        self.intensity_layer = tf.Variable(tf.zeros((feature_size, feature_size), dtype=tf.float32))
         if not initial_value:
             initial_value = tf.keras.initializers.Constant(0.)(shape=(feature_size, feature_size))
         self.count_layer = tf.Variable(tf.zeros((feature_size, feature_size), dtype=tf.float32))
         self.count_to_adj_layer = tf.keras.layers.Conv1D(activation='tanh', padding="same", filters=feature_size, strides=1, kernel_size=1)
 
-        self.hippo = HiPPOLayer(state_size=embedding_dim, 
+        self.hippo = HiPPOLayer(state_size=feature_size, 
                                 hippo_type='legendre_scaled',
                                 theta=1.,
                                 return_sequences=True,
@@ -233,21 +233,75 @@ class HiPPOEmbeddingModel(tf.keras.models.Model):
 
     @tf.function
     def batch_update_accumulator(self, acc, batch_sessions):
-        """Update accumulator with multiple sessions at once."""
-        all_indices = []
+        """More efficient version using TensorArray."""
         
-        for session_data in batch_sessions:
-            session_indices = []
-            for i in range(len(session_data)):
-                for j in range(i, len(session_data)):
-                    if i != j:
-                        session_indices.append([session_data[i], session_data[j]])
-            all_indices.extend(session_indices)
+        batch_size = tf.shape(batch_sessions)[0]
+        indices_array = tf.TensorArray(
+            dtype=batch_sessions.dtype,
+            size=0,
+            dynamic_size=True,
+            infer_shape=False
+        )
         
-        if all_indices:
-            indices = tf.constant(all_indices)
-            updates = tf.ones(len(all_indices), dtype=acc.dtype)
-            acc.scatter_nd_add(indices, updates)    
+        def process_batch_element(i, indices_array):
+            session_data = batch_sessions[i]
+            session_length = tf.shape(session_data)[0]
+            
+            # Generate pairs for this session
+            def generate_pairs():
+                i_range = tf.range(session_length)
+                j_range = tf.range(session_length)
+                
+                ii, jj = tf.meshgrid(i_range, j_range, indexing='ij')
+                ii_flat = tf.reshape(ii, [-1])
+                jj_flat = tf.reshape(jj, [-1])
+                
+                mask = ii_flat != jj_flat
+                valid_i = tf.boolean_mask(ii_flat, mask)
+                valid_j = tf.boolean_mask(jj_flat, mask)
+                
+                session_i = tf.gather(session_data, valid_i)
+                session_j = tf.gather(session_data, valid_j)
+                
+                pairs = tf.stack([session_i, session_j], axis=1)
+                return pairs
+            
+            def no_pairs():
+                return tf.zeros([0, 2], dtype=batch_sessions.dtype)
+            
+            pairs = tf.cond(session_length > 1, generate_pairs, no_pairs)
+            
+            # Add pairs to the array
+            num_pairs = tf.shape(pairs)[0]
+            
+            def add_pairs(j, indices_array):
+                indices_array = indices_array.write(indices_array.size(), pairs[j])
+                return j + 1, indices_array
+            
+            def add_condition(j, indices_array):
+                return j < num_pairs
+            
+            _, indices_array = tf.while_loop(
+                add_condition, add_pairs,
+                [tf.constant(0), indices_array]
+            )
+            
+            return i + 1, indices_array
+        
+        def batch_condition(i, indices_array):
+            return i < batch_size
+        
+        # Process all batch elements
+        _, final_array = tf.while_loop(
+            batch_condition, process_batch_element,
+            [tf.constant(0), indices_array]
+        )
+        
+        # Convert TensorArray to tensor
+        if final_array.size() > 0:
+            all_indices = final_array.stack()
+            updates = tf.ones(tf.shape(all_indices)[0], dtype=acc.dtype)
+            acc.scatter_nd_add(all_indices, updates)    
     
     def call(self, inputs: tp.Dict[str, tf.Tensor], training: bool = False):
         feature_lookup = self.lookup_layer(inputs[self.feature_name])
@@ -257,8 +311,8 @@ class HiPPOEmbeddingModel(tf.keras.models.Model):
         acc_expanded = tf.expand_dims(self.count_layer, 0)
         acc_broadcasted = tf.broadcast_to(acc_expanded, target_shape)
         adj_matrix = self.count_to_adj_layer(acc_broadcasted)
-        feature_embedding = self.embedding_layer(feature_lookup)
-        hippo_out, state = self.hippo(adj_matrix, initial_state=feature_embedding)
+        hippo_out, state = self.hippo(self.intensity_layer, initial_state=adj_matrix)
+        self.intensity_layer = state
         output = self.candidate_layer(hippo_out[:, -1, :]) # return last output embedding
         if not training:
             return output
