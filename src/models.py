@@ -262,7 +262,7 @@ class HiPPOEmbeddingModel(tf.keras.models.Model):
         output = self.candidate_layer(hippo_out[:, -1, :]) # return last output embedding
         if not training:
             return output
-        return output, hippo_out, state
+        return output, hippo_out, state, acc_broadcasted
 
 class RetrievalModel(tfrs.Model):
     """
