@@ -308,7 +308,7 @@ class HiPPOCell(tf.keras.layers.Layer):
         # inputs: (batch_size, input_dim)
         # states: [(batch_size, state_size)]
         
-        prev_state = states
+        prev_state = states[0]
         
         # Get discretized matrices
         Ad, Bd = self._get_discretized_matrices()
