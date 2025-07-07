@@ -213,7 +213,7 @@ class HiPPOEmbeddingModel(tf.keras.models.Model):
             self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
         else:
             self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
-        self.intensity_layer = tf.Variable(tf.zeros((feature_size, feature_size), dtype=tf.float32))
+        self.intensity_layer = tf.Variable(tf.zeros((feature_size * feature_size), dtype=tf.float32))
         if not initial_value:
             initial_value = tf.keras.initializers.Constant(0.)(shape=(feature_size, feature_size))
         self.count_layer = tf.Variable(tf.zeros((feature_size, feature_size), dtype=tf.float32))
@@ -311,7 +311,7 @@ class HiPPOEmbeddingModel(tf.keras.models.Model):
         acc_expanded = tf.expand_dims(self.count_layer, 0)
         acc_broadcasted = tf.broadcast_to(acc_expanded, target_shape)
         adj_matrix = self.count_to_adj_layer(acc_broadcasted)
-        hippo_out, state = self.hippo(self.intensity_layer, initial_state=adj_matrix)
+        hippo_out, state = self.hippo(adj_matrix, self.intensity_layer)
         self.intensity_layer = state
         output = self.candidate_layer(hippo_out[:, -1, :]) # return last output embedding
         if not training:
