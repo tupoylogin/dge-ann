@@ -234,7 +234,7 @@ class HiPPOEmbeddingModel(tf.keras.models.Model):
         self.candidate_layer = tf.keras.layers.Dense(embedding_dim)
 
     @tf.function
-    def batch_update_accumulator(acc, batch_sessions):
+    def batch_update_accumulator(self, acc, batch_sessions):
         """Optimized version using vectorized operations."""
         
         # Get valid mask for all sessions at once
