@@ -307,6 +307,7 @@ class HiPPOCell(tf.keras.layers.Layer):
     def call(self, inputs, states):
         # inputs: (batch_size, input_dim)
         # states: [(batch_size, state_size)]
+        print(states)
         
         prev_state = states[0]
         
@@ -315,8 +316,10 @@ class HiPPOCell(tf.keras.layers.Layer):
         
         # Apply discrete HiPPO update
         # x[k+1] = Ad @ x[k] + Bd @ u[k]
-        new_state = (tf.linalg.matmul(Ad, prev_state) + 
-                    tf.linalg.matmul(Bd, inputs))
+        new_state = (tf.linalg.matmul(prev_state, Ad, ) + 
+                    tf.linalg.matmul(prev_state, Bd, ))
+        
+        print(new_state)
         
         return new_state, [new_state]
     

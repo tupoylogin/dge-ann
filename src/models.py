@@ -214,87 +214,102 @@ class HiPPOEmbeddingModel(tf.keras.models.Model):
             self.lookup_layer = tf.keras.layers.IntegerLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token=0)
         else:
             self.lookup_layer = tf.keras.layers.StringLookup(max_tokens=feature_size, vocabulary=feature_vocab, oov_token="_PAD_")
-        self.intensity_layer = tf.Variable(tf.ones((embedding_dim), dtype=tf.float32))
+        self.intensity_layer = tf.keras.layers.Dense(units=embedding_dim, activation='relu')
         if not initial_value:
             initial_value = tf.keras.initializers.Constant(0.)(shape=(feature_size, feature_size))
         self.count_layer = tf.Variable(tf.zeros((feature_size, feature_size), dtype=tf.float32))
-        self.count_to_adj_layer = tf.keras.layers.Dense(activation='tanh', units=embedding_dim*embedding_dim)
+        self.count_avg_layer = tf.keras.layers.GlobalMaxPool1D()
+        self.count_to_adj_layer_dense =  tf.keras.layers.Dense(units=embedding_dim*embedding_dim, activation='tanh')
         self.count_to_adj_layer_reshape = tf.keras.layers.Reshape((embedding_dim, embedding_dim))
 
         self.hippo = HiPPOLayer(state_size=embedding_dim, 
                                 hippo_type='legendre_scaled',
                                 theta=1.,
-                                return_sequences=True,
-                                return_state=True,
+                                return_sequences=False,
+                                return_state=False,
                                 trainable_A=hippo_trainable,
                                 trainable_B=hippo_trainable,
-                                trainable_theta=True
+                                trainable_theta=False
                                 )
         
         self.candidate_layer = tf.keras.layers.Dense(embedding_dim)
 
     @tf.function
-    def batch_update_accumulator(self, acc, batch_sessions):
-        """Optimized version using vectorized operations."""
+    def batch_update_accumulator(self, base_acc, batch_sessions):
+        base_acc = tf.cast(base_acc, tf.float32)
+        batch_sessions = tf.cast(batch_sessions, tf.int32)
         
-        # Get valid mask for all sessions at once
-        valid_mask = batch_sessions >= 0
+        batch_size = tf.cast(tf.shape(batch_sessions)[0], tf.int32)
+        max_seq_len = tf.cast(tf.shape(batch_sessions)[1], tf.int32)
+        vocab_size = tf.cast(tf.shape(base_acc)[0], tf.int32)
         
-        # Process each session
-        def process_batch():
-            all_pairs = []
-            batch_size = tf.shape(batch_sessions)[0]
+        # Initialize result with base accumulator for each batch
+        result = tf.tile(tf.expand_dims(base_acc, 0), [batch_size, 1, 1])
+        
+        # Create all possible consecutive pairs for all sessions at once
+        # Shape: (batch_size, max_seq_len-1, 2)
+        current_items = batch_sessions[:, :-1]  # All items except last
+        next_items = batch_sessions[:, 1:]      # All items except first
+        
+        # Stack to create pairs: (batch_size, max_seq_len-1, 2)
+        all_pairs = tf.stack([current_items, next_items], axis=2)
+        
+        # Create validity mask for pairs (both elements must be >= 0)
+        valid_current = current_items >= 0
+        valid_next = next_items >= 0
+        valid_pairs_mask = tf.logical_and(valid_current, valid_next)
+        
+        # Flatten everything for easier processing
+        # Shape: (batch_size * (max_seq_len-1), 2)
+        flat_pairs = tf.reshape(all_pairs, [-1, 2])
+        # Shape: (batch_size * (max_seq_len-1),)
+        flat_valid = tf.reshape(valid_pairs_mask, [-1])
+        
+        # Get batch indices for each flattened pair
+        batch_indices = tf.repeat(tf.range(batch_size), max_seq_len - 1)
+        
+        # Filter to only valid pairs
+        valid_flat_pairs = tf.boolean_mask(flat_pairs, flat_valid)
+        valid_batch_indices = tf.boolean_mask(batch_indices, flat_valid)
+        
+        # Create full indices for 3D scatter: (batch_idx, row, col)
+        num_valid_pairs = tf.shape(valid_flat_pairs)[0]
+        
+        if num_valid_pairs > 0:
+            # Combine batch indices with pair indices
+            full_indices = tf.concat([
+                tf.expand_dims(valid_batch_indices, 1),  # Which batch
+                valid_flat_pairs                         # Which position in matrix
+            ], axis=1)
             
-            for i in tf.range(batch_size):
-                session = batch_sessions[i]
-                session_mask = valid_mask[i]
-                
-                # Get valid elements
-                valid_session = tf.boolean_mask(session, session_mask)
-                session_length = tf.shape(valid_session)[0]
-                
-                # Generate pairs if session is long enough
-                def make_pairs():
-                    pairs_i = valid_session[:-1]
-                    pairs_j = valid_session[1:]
-                    return tf.stack([pairs_i, pairs_j], axis=1)
-                
-                def no_pairs():
-                    return tf.zeros([0, 2], dtype=session.dtype)
-                
-                session_pairs = tf.cond(session_length > 1, make_pairs, no_pairs)
-                all_pairs.append(session_pairs)
+            # Create updates (all 1s)
+            updates = tf.ones(num_valid_pairs, dtype=base_acc.dtype)
             
-            return tf.concat(all_pairs, axis=0)
+            # Apply updates to result
+            result = tf.tensor_scatter_nd_add(result, full_indices, updates)
         
-        # Get all pairs
-        all_pairs = process_batch()
-        num_pairs = tf.shape(all_pairs)[0]
-        
-        # Update accumulator
-        tf.cond(
-            num_pairs > 0,
-            lambda: acc.scatter_nd_add(all_pairs, tf.ones(num_pairs, dtype=acc.dtype)),
-            lambda: acc
-        )
-    
+        return result
+            
     def call(self, inputs: tp.Dict[str, tf.Tensor], training: bool = False):
         feature_lookup = self.lookup_layer(inputs[self.feature_name])
-        self.batch_update_accumulator(self.count_layer, feature_lookup)
+        count_layer = self.batch_update_accumulator(self.count_layer, feature_lookup)
+        #self.count_layer = tf.reduce_sum(count_layer, axis=0)
+        print(count_layer)
         batch_size = tf.shape(inputs[self.feature_name])[0]
-        target_shape = [batch_size] + self.count_layer.shape.as_list()
-        acc_expanded = tf.expand_dims(self.count_layer, 0)
-        acc_broadcasted = tf.broadcast_to(acc_expanded, target_shape)
-        acc_broadcasted = tf.reduce_mean(acc_broadcasted, axis=-1)
-        adj_matrix = self.count_to_adj_layer(acc_broadcasted)
+        adj_matrix = self.count_avg_layer(count_layer)
+        print(adj_matrix)
+        adj_matrix = self.count_to_adj_layer_dense(adj_matrix)
+        intensity_layer = self.intensity_layer(adj_matrix)
         adj_matrix = self.count_to_adj_layer_reshape(adj_matrix)
-        target_shape = [batch_size] + self.intensity_layer.shape.as_list()
-        intensity_layer = tf.broadcast_to(self.intensity_layer, target_shape)
-        hippo_out, state = self.hippo(adj_matrix, intensity_layer)
-        output = self.candidate_layer(hippo_out[:, -1, :]) # return last output embedding
+        print(adj_matrix, intensity_layer)
+        hippo_out = self.hippo(adj_matrix, intensity_layer)
+        print('hippo output')
+        print(hippo_out)
+        print('hippo output ended')
+        output = self.candidate_layer(hippo_out) # return last output embedding
         if not training:
             return output
-        return output, hippo_out, state, acc_broadcasted
+        return output, hippo_out, self.count_layer
 
 class RetrievalModel(tfrs.Model):
     """
